@@ -1,0 +1,90 @@
+#CMakeLists.txt の覚書
+
+#[==============[Top 共通の CMake]==============]
+# 以下のコマンドはルートディレクトリ側で使用されるコマンド
+
+include(pico_sdk_import.cmake)
+#[[
+    pico_sdk_import.cmake を include する。
+    > PICO_SDK_PATH で設定された SDK を CMake 内変数にコピー。（なければ Git から取得）
+    > pico_sdk_init.cmake を include する。
+]]
+
+pico_sdk_init()
+#[[
+    < pico_sdk 内 pico_sdk_init.cmake にて定義されている。
+    pico_sdk 本体を add_subdirectory する。
+]]
+
+add_subdirectory(blink)
+add_subdirectory(hello_world)
+#[[
+    blink と hellow_world をサブディレクトリにする。
+    > ディレクトリを CMake の管理に追加する。
+        > 
+    
+    公式 Documentation
+    add_subdirectory(source_dir [binary_dir] [EXCLUDE_FROM_ALL])
+    ビルドにサブディレクトリを追加する。
+    
+    source_dir
+    ソースコードとそれに対応する CMakeLists.txt の在処。
+    絶対パスでも相対パスでも指定できるが、相対パスの場合は現在のディレクトリを基準とする。
+    指定されたソースディレクトリの CMakeLists.txt は、add_subdirectory() が完了する前に CMake によって実行される。
+
+    binary_dire
+    出力ファイルを配置するディレクトリ。省略可能。
+    絶対パスでも相対パスでも指定できるが、相対パスの場合は現在のディレクトリを基準とする。
+    省略された場合は source_dir の値が使用される。
+
+    EXCLUDE_FROM_ALL
+    例外ターゲット。省略可能。
+    省略されなかった場合、サブディレクトリ内のターゲットは、親ディレクトリの ALL ターゲットには含まれず、 IDE プロジェクトファイルから除外される。
+    これは有用だが必須ではないプロジェクトが含まれている場合に使用することを目的としている。
+]]
+
+#[==============[各プロジェクトの CMake]==============]
+# 以下のコマンドはサブディレクトリ側で使用されるコマンド
+
+add_executable(blink blink.c)
+#[[
+    実行ファイルを作る。
+
+    CMake 公式によると以下の 3 種類の文法があるらしい。pico-example とか、上記の例は、一番目の Normal Executables だと思われる。
+    add_executable(<name> [WIN32] [MACOSX_BUNDLE] [EXCLUDE_FROM_ALL] [source1] [source2] [source3........]) # Normal Executables
+    add_executable(<name> IMPORTED [GLOBAL])    # Imported Executables
+    add_executable(<name> ALIAS <target>)   # Alias Executables
+
+    Normal Executables
+    コマンド呼び出しにリストされているソースファイルからビルドされる <name> という実行可能ターゲットを追加する。
+    <name> は論理ターゲット名に対応。プロジェクト内で一意である必要がある。
+    ちょっとこれ以上は全部「詳細については、**中略** ターゲットプロパティのドキュメントを参照してください。」で何もわからん。
+
+    Imported Executables
+    プロジェクト外部にある実行可能ファイルを参照する。
+
+    GLOBAL
+    ターゲットの検索範囲を広げる（？）
+    本来ターゲットは CMakeLists.txt のあるディレクトリ内でスコープするが、GLOBAL オプションを追加することで他のところもスコープできるようにする。
+]]
+
+target_link_libraries(blink pico_stdlib)
+#[[
+    target_link_libraries() で blink に pico_stdlib をリンクする。
+]]
+
+pico_add_extra_outputs(blink)
+#[[
+    bin, hex, map, uf2 ファイルを作る。
+    > 実際には objcopy, objdump を呼んでる。
+    > 処理は rp2_common.cmake, pico-sdk/tools/CMakeLists.txt
+]]
+
+example_auto_set_url(blink)
+#[[
+    cmake の target_compile_difinitions によって、PICO_PROGRAM_URL を付与。
+    は？
+    denshi.club/parts/2021/04/raspberry-pi-pico-5.html によると、
+    『想像ですがGitHubなどに公開するときの記述らしいので、当初、不要だと思います。削除します。』
+    ああ、別になくても良いのかな？
+]]
