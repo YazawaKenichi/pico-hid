@@ -311,7 +311,7 @@ void hid_task(void)
 // REPORT がホストに正常に送信されたときに呼び出される
 // アプリケーションはこれを使用して次のレポートを送信できる
 // 注：複合レポートの場合、report[0] はレポート ID
-void tud_hid_report_complete_cb(uint8_t instance, uint8_t const* report, uint8_t len)
+void tud_hid_report_complete_cb(uint8_t instance, uint8_t const* report, uint16_t len)
 {
   (void) instance;
   (void) len;

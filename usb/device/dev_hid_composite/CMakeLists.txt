@@ -1,14 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
 
-include(pico_sdk_import.cmake)
-
-project(dhc C CXX ASM)
-
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_CXX_StANDARD 17)
-
-pico_sdk_init()
-
 add_executable(dev_hid_composite)
 
 target_sources(dev_hid_composite PUBLIC

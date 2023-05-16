@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.12)
 # Pull in SDK (must be before project)
 include(pico_sdk_import.cmake)
 
+include(pico_extras_import_optional.cmake)
+
 project(pico_hid C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
@@ -30,7 +32,7 @@ add_compile_options(-Wall
         )
 
 # Hardware-specific examples in subdirectories:
-add_subdirectory(adc)
+# add_subdirectory(adc)
 # add_subdirectory(clocks)
 # add_subdirectory(cmake)
 # add_subdirectory(divider)
@@ -52,4 +54,3 @@ add_subdirectory(adc)
 # add_subdirectory(uart)
 add_subdirectory(usb)
 # add_subdirectory(watchdog)
-
