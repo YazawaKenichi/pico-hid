@@ -17,19 +17,20 @@ pico_sdk_init()
 include(cmake/example_auto_set_url.cmake)
 
 add_compile_options(-Wall
-        -Wno-format          # int != int32_t as far as the compiler is concerned because gcc has int32_t as long int
-        -Wno-unused-function # we have some for the docs that aren't called
-        -Wno-maybe-uninitialized
-        )
+    -Wno-format          # int != int32_t as far as the compiler is concerned because gcc has int32_t as long int
+    -Wno-unused-function # we have some for the docs that aren't called
+    -Wno-maybe-uninitialized
+    )
 
 if(TARGET tinyusb_device)
-        set(FAMILY rp2040)
-        set(BOARD pico_sdk)
-        set(TINYUSB_FAMILY_PROJECT_NAME_PREFIX "tinyusb_dev_")
-        add_subdirectory(${PICO_TINYUSB_PATH}/examples/device tinyusb_device_examples)
-        add_subdirectory(foot_key)
+    add_subdirectory(foot_key)
+    if(TARGET tinyusb_host)
+        add_subdirectory(spla_hid)
+    else()
+        message("Skipping TinyUSB host examples as TinyUSB is unavailable")
+    endif()
 else()
-        message("Skipping TinyUSB device examples as TinyUSB is unavailable")
+    message("Skipping TinyUSB device examples as TinyUSB is unavailable")
 endif()
 
 
