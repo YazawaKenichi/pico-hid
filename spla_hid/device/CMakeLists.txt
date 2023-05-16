@@ -20,5 +20,8 @@ target_link_libraries(spla_hid_device PUBLIC pico_stdlib tinyusb_device tinyusb_
 
 pico_add_extra_outputs(spla_hid_device)
 
+pico_enable_stdio_usb(spla_hid_device 1)
+pico_enable_stdio_uart(spla_hid_device 0)
+
 # add url via pico_set_program_url
 example_auto_set_url(spla_hid_device)

@@ -1,45 +1,58 @@
-/* 
- * The MIT License (MIT)
- *
- * Copyright (c) 2019 Ha Thach (tinyusb.org)
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- *
+/**
+ * @file main.c
+ * @author YAZAWA Kenichi (s21c1036hn@gmail.com)
+ * @brief 
+ * @version 1.0
+ * @date 2023-01-31
+ * 
+ * (C) 2023 YAZAWA Kenichi
+ * 
+ * 1. ボード上のボタンを押下する
+ * 2. hid_task() 関数の中でそれを検出し、btn に格納 ( 多分真偽値 )
+ * 3. send_hid_report(REPORT_ID_KEYBOARD, btn) 関数を呼び出す
+ * 4. keycode に HID_KEY_A すなわち A キーを格納する
+ * 5. tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode) で A キーを送信する
+ * 
  */
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
+//! ----/pico-sdk/lib/tinyusb/hw/bsp/board.h
 #include "bsp/board.h"
+//! ----/pico-sdk/lib/tinyusb/src/tusb.h
 #include "tusb.h"
 
+//! ----/pico-examples/usb/device/dev_hid_composite/usb_descriptors.h
 #include "usb_descriptors.h"
+
+#include <unistd.h>
+#include "pico/stdlib.h"
 
 //--------------------------------------------------------------------+
 // MACRO CONSTANT TYPEDEF PROTYPES
 //--------------------------------------------------------------------+
 
-/* Blink pattern
- * - 250 ms  : device not mounted
- * - 1000 ms : device mounted
- * - 2500 ms : device is suspended
+#define LED1 0  //! 赤色 LED
+#define LED2 1  //! 緑色 LED
+
+//! ボード上スイッチ
+#define SW1 3   //! 上ボタン
+#define SW2 6   //! 下ボタン
+//! 左上 3 ピン GPIO 端子
+#define SW3 2
+//! 左側の 4 ピン GPIO 端子
+#define SW4 7
+#define SW5 8
+//! 右側のオルタネートスイッチ
+#define SW6 21
+
+#define RESC(X) rescale(X, 4096, 0, 50, 0)
+
+/* 点滅パターン
+ * - 250 ms  : デバイスがマウントされていない
+ * - 1000 ms : デバイス搭載
+ * - 2500 ms : デバイスは停止されている
  */
 enum  {
   BLINK_NOT_MOUNTED = 250,
@@ -49,52 +62,96 @@ enum  {
 
 static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 
+float rescale(int16_t, int16_t, int16_t, int16_t, int16_t);
 void led_blinking_task(void);
 void hid_task(void);
+
+uint8_t flg;
+
+//! オルタネートスイッチで使う
+uint8_t alternated;
+uint8_t button_buff = 0x00;
+uint8_t keybef = 0x00;
+
+void main_init()
+{
+    stdio_init_all();
+    board_init();
+    tusb_init();
+
+    gpio_init(LED1);
+    gpio_init(LED2);
+    gpio_init(SW1);
+    gpio_init(SW2);
+    gpio_init(SW3);
+    gpio_init(SW4);
+    gpio_init(SW5);
+    gpio_init(SW6);
+
+    gpio_set_dir(LED1, GPIO_OUT);
+    gpio_set_dir(LED2, GPIO_OUT);
+
+    gpio_set_dir(SW1, GPIO_IN);
+    gpio_set_dir(SW2, GPIO_IN);
+    gpio_set_dir(SW3, GPIO_IN);
+    gpio_set_dir(SW4, GPIO_IN);
+    gpio_set_dir(SW5, GPIO_IN);
+    gpio_set_dir(SW6, GPIO_IN);
+
+    gpio_put(LED1, 1);
+    gpio_put(LED2, 1);
+
+    flg = 0;
+}
 
 /*------------- MAIN -------------*/
 int main(void)
 {
-  board_init();
-  tusb_init();
+    main_init();
 
-  while (1)
-  {
-    tud_task(); // tinyusb device task
-    led_blinking_task();
+    while (1)
+    {
+        alternated = !gpio_get(SW6);
+        gpio_put(LED1, !alternated);
 
-    hid_task();
-  }
+        tud_task(); // tinyusb デバイスタスク
+        led_blinking_task();
 
-  return 0;
+        flg = !gpio_get(SW1);
+
+        hid_task();
+        sleep_ms(1);
+    }
+
+    return 0;
 }
 
 //--------------------------------------------------------------------+
 // Device callbacks
 //--------------------------------------------------------------------+
 
-// Invoked when device is mounted
+// デバイスがマウントされたときに呼び出される
 void tud_mount_cb(void)
 {
   blink_interval_ms = BLINK_MOUNTED;
 }
 
-// Invoked when device is unmounted
+// デバイスがマウント解除されたときに呼び出される
 void tud_umount_cb(void)
 {
   blink_interval_ms = BLINK_NOT_MOUNTED;
 }
 
-// Invoked when usb bus is suspended
-// remote_wakeup_en : if host allow us  to perform remote wakeup
-// Within 7ms, device must draw an average of current less than 2.5 mA from bus
+// USB バスがサスペンドされたときに呼び出される
+// remote_wakeup_en : ホストがリモートウェイクアップの実行を許可する場合
+// 7 ms 以内に、デバイスはバスから平均 2.5 mA 未満の電流を引き出す必要がある
 void tud_suspend_cb(bool remote_wakeup_en)
 {
   (void) remote_wakeup_en;
   blink_interval_ms = BLINK_SUSPENDED;
 }
 
-// Invoked when usb bus is resumed
+// USB バスが再開されたときに呼び出される
 void tud_resume_cb(void)
 {
   blink_interval_ms = BLINK_MOUNTED;
@@ -104,125 +161,91 @@ void tud_resume_cb(void)
 // USB HID
 //--------------------------------------------------------------------+
 
+/**
+ * @brief 
+ * 
+ * @param report_id 
+ * REPORT_ID_KEYBOARD : キーボード
+ * REPORT_ID_MOUSE : マウス
+ * REPORT_ID_COSUMER_CONTROL : ナニコレ（ボリュームが使えるなにか）
+ * REPORT_ID_GAMEPAD : ゲームパッド
+ * @param btn 
+ */
 static void send_hid_report(uint8_t report_id, uint32_t btn)
 {
-  // skip if hid is not ready yet
-  if ( !tud_hid_ready() ) return;
+    // HID の準備ができていない場合はスキップ
+    if(!tud_hid_ready())
+        return;
 
-  switch(report_id)
-  {
-    case REPORT_ID_KEYBOARD:
+    switch(report_id)
     {
-      // use to avoid send multiple consecutive zero report for keyboard
-      static bool has_keyboard_key = false;
+        case REPORT_ID_GAMEPAD:
+        {
+            hid_gamepad_report_t report = { .x = 0, .y = 0, .z = 0, .rz = 0, .rx = 0, .ry = 0, .hat = 0, .buttons = 0 };
 
-      if ( btn )
-      {
-        uint8_t keycode[6] = { 0 };
-        keycode[0] = HID_KEY_A;
+            //! ボード上上ボタン
+            if(gpio_get(SW1))
+            {
+                report.buttons = report.buttons | GAMEPAD_BUTTON_TL;
+            }
+            //! ボード上下ボタン
+            if(gpio_get(SW2))
+            {
+                report.buttons = report.buttons | GAMEPAD_BUTTON_TR;
+            }
+            //! 左上三本ピン
+            if(gpio_get(SW3))
+            {
+                report.buttons = report.buttons | GAMEPAD_BUTTON_A;
+            }
+            //! 左側4ピン
+            if(gpio_get(SW4))
+            {
+                report.buttons = report.buttons | GAMEPAD_BUTTON_TL2;
+            }
+            if(gpio_get(SW5))
+            {
+                report.buttons = report.buttons | GAMEPAD_BUTTON_TR2;
+            }
 
-        tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, keycode);
-        has_keyboard_key = true;
-      }else
-      {
-        // send empty key report if previously has key pressed
-        if (has_keyboard_key) tud_hid_keyboard_report(REPORT_ID_KEYBOARD, 0, NULL);
-        has_keyboard_key = false;
-      }
+            tud_hid_report(REPORT_ID_GAMEPAD, &report, sizeof(report));
+        }
+        break;
+        default:
+        break;
     }
-    break;
-
-    case REPORT_ID_MOUSE:
-    {
-      int8_t const delta = 5;
-
-      // no button, right + down, no scroll, no pan
-      tud_hid_mouse_report(REPORT_ID_MOUSE, 0x00, delta, delta, 0, 0);
-    }
-    break;
-
-    case REPORT_ID_CONSUMER_CONTROL:
-    {
-      // use to avoid send multiple consecutive zero report
-      static bool has_consumer_key = false;
-
-      if ( btn )
-      {
-        // volume down
-        uint16_t volume_down = HID_USAGE_CONSUMER_VOLUME_DECREMENT;
-        tud_hid_report(REPORT_ID_CONSUMER_CONTROL, &volume_down, 2);
-        has_consumer_key = true;
-      }else
-      {
-        // send empty key report (release key) if previously has key pressed
-        uint16_t empty_key = 0;
-        if (has_consumer_key) tud_hid_report(REPORT_ID_CONSUMER_CONTROL, &empty_key, 2);
-        has_consumer_key = false;
-      }
-    }
-    break;
-
-    case REPORT_ID_GAMEPAD:
-    {
-      // use to avoid send multiple consecutive zero report for keyboard
-      static bool has_gamepad_key = false;
-
-      hid_gamepad_report_t report =
-      {
-        .x   = 0, .y = 0, .z = 0, .rz = 0, .rx = 0, .ry = 0,
-        .hat = 0, .buttons = 0
-      };
-
-      if ( btn )
-      {
-        report.hat = GAMEPAD_HAT_UP;
-        report.buttons = GAMEPAD_BUTTON_A;
-        tud_hid_report(REPORT_ID_GAMEPAD, &report, sizeof(report));
-
-        has_gamepad_key = true;
-      }else
-      {
-        report.hat = GAMEPAD_HAT_CENTERED;
-        report.buttons = 0;
-        if (has_gamepad_key) tud_hid_report(REPORT_ID_GAMEPAD, &report, sizeof(report));
-        has_gamepad_key = false;
-      }
-    }
-    break;
-
-    default: break;
-  }
 }
 
-// Every 10ms, we will sent 1 report for each HID profile (keyboard, mouse etc ..)
-// tud_hid_report_complete_cb() is used to send the next report after previous one is complete
+// 10 ms ごとに、HID プロファイル（キーボード、マウスなど）ごとに１つのレポートが送信される
+// tud_hid_report_complete_cb() は、前のレポートが完了した後に次のレポートを送信するために使用される
 void hid_task(void)
 {
-  // Poll every 10ms
+  // 10 ms ごとにポーリングする
   const uint32_t interval_ms = 10;
   static uint32_t start_ms = 0;
 
-  if ( board_millis() - start_ms < interval_ms) return; // not enough time
+  if ( board_millis() - start_ms < interval_ms) return; // 時間が足りない
   start_ms += interval_ms;
 
   uint32_t const btn = board_button_read();
 
-  // Remote wakeup
-  if ( tud_suspended() && btn )
+  // リモートウェイクアップ
+  if(tud_suspended())
   {
-    // Wake up host if we are in suspend mode
-    // and REMOTE_WAKEUP feature is enabled by host
+    // サスペンドモードの場合はホストをウェイクアップする
+    // ホストによって REMOTE_WAKEUP 機能が有効になっている
     tud_remote_wakeup();
-  }else
+  }
+  else
   {
-    // Send the 1st of report chain, the rest will be sent by tud_hid_report_complete_cb()
-    send_hid_report(REPORT_ID_KEYBOARD, btn);
+    // レポートチェーンの最初のものを送信し、残りは tud_hid_report_complete_cb() によって送信される
+    send_hid_report(REPORT_ID_GAMEPAD, btn);
   }
 }
 
-// Invoked when sent REPORT successfully to host
-// Application can use this to send the next report
-// Note: For composite reports, report[0] is report ID
+// REPORT がホストに正常に送信されたときに呼び出される
+// アプリケーションはこれを使用して次のレポートを送信できる
+// 注：複合レポートの場合、report[0] はレポート ID
 void tud_hid_report_complete_cb(uint8_t instance, uint8_t const* report, uint16_t len)
 {
   (void) instance;
@@ -236,12 +259,12 @@ void tud_hid_report_complete_cb(uint8_t instance, uint8_t const* report, uint16_
   }
 }
 
-// Invoked when received GET_REPORT control request
-// Application must fill buffer report's content and return its length.
-// Return zero will cause the stack to STALL request
+// GET_REPORT 制御リクエストを受信したときに呼び出される
+// アプリケーションは、バッファレポートの内容を入力し、その長さを返す必要がある
+// ゼロを返すと、スタックが STALL 要求になる
 uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type, uint8_t* buffer, uint16_t reqlen)
 {
-  // TODO not Implemented
+  // TODO 未実装
   (void) instance;
   (void) report_id;
   (void) report_type;
@@ -251,30 +274,30 @@ uint16_t tud_hid_get_report_cb(uint8_t instance, uint8_t report_id, hid_report_t
   return 0;
 }
 
-// Invoked when received SET_REPORT control request or
-// received data on OUT endpoint ( Report ID = 0, Type = 0 )
+// SET_REPORT 制御要求を受信したときに呼び出される
+// OUT エンドポイントでデータを受信した（レポート ID = 0, タイプ = 0 ）
 void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_t report_type, uint8_t const* buffer, uint16_t bufsize)
 {
   (void) instance;
 
   if (report_type == HID_REPORT_TYPE_OUTPUT)
   {
-    // Set keyboard LED e.g Capslock, Numlock etc...
+    // Capslock, Numlock などのキーボード LED を設定する
     if (report_id == REPORT_ID_KEYBOARD)
     {
-      // bufsize should be (at least) 1
+      // bufsize は（少なくとも）１でなければならない
       if ( bufsize < 1 ) return;
 
       uint8_t const kbd_leds = buffer[0];
 
       if (kbd_leds & KEYBOARD_LED_CAPSLOCK)
       {
-        // Capslock On: disable blink, turn led on
+        // Capslock オン：点滅を無効にし、LED をオンにする
         blink_interval_ms = 0;
         board_led_write(true);
       }else
       {
-        // Caplocks Off: back to normal blink
+        // Capslock オフ：通常の点滅に戻る
         board_led_write(false);
         blink_interval_ms = BLINK_MOUNTED;
       }
@@ -290,13 +313,21 @@ void led_blinking_task(void)
   static uint32_t start_ms = 0;
   static bool led_state = false;
 
-  // blink is disabled
+  // 点滅は無効
   if (!blink_interval_ms) return;
 
-  // Blink every interval ms
-  if ( board_millis() - start_ms < blink_interval_ms) return; // not enough time
+  // ms 間隔ごとに点滅
+  if ( board_millis() - start_ms < blink_interval_ms) return; // 時間が足りない
   start_ms += blink_interval_ms;
 
   board_led_write(led_state);
-  led_state = 1 - led_state; // toggle
+  led_state = 1 - led_state; // トグル
 }
+
+float rescale(int16_t in, int16_t in_max, int16_t in_min, int16_t out_max, int16_t out_min)
+{
+    float out;
+    out = out_min + (out_max - out_min) * (in - in_min) / (float) (in_max - in_min);
+    return out;
+}
+
