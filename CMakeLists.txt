@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.12)
 
 # Pull in SDK (must be before project)
-include(pico_sdk_import.cmake)
+include(cmake/pico_sdk_import.cmake)
 
-include(pico_extras_import_optional.cmake)
+include(cmake/pico_extras_import_optional.cmake)
 
 project(pico_hid C CXX ASM)
 set(CMAKE_C_STANDARD 11)
@@ -14,7 +14,7 @@ set(PICO_EXAMPLES_PATH ${PROJECT_SOURCE_DIR})
 # Initialize the SDK
 pico_sdk_init()
 
-include(example_auto_set_url.cmake)
+include(cmake/example_auto_set_url.cmake)
 
 add_compile_options(-Wall
         -Wno-format          # int != int32_t as far as the compiler is concerned because gcc has int32_t as long int
@@ -22,5 +22,15 @@ add_compile_options(-Wall
         -Wno-maybe-uninitialized
         )
 
-# Hardware-specific examples in subdirectories:
-add_subdirectory(usb)
+if(TARGET tinyusb_device)
+        set(FAMILY rp2040)
+        set(BOARD pico_sdk)
+        set(TINYUSB_FAMILY_PROJECT_NAME_PREFIX "tinyusb_dev_")
+        add_subdirectory(${PICO_TINYUSB_PATH}/examples/device tinyusb_device_examples)
+        add_subdirectory(foot_key)
+else()
+        message("Skipping TinyUSB device examples as TinyUSB is unavailable")
+endif()
+
+
+
