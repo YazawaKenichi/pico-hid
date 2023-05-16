@@ -28,6 +28,7 @@
 
 #include <unistd.h>
 #include "pico/stdlib.h"
+#include "hardware/adc.h"
 
 //--------------------------------------------------------------------+
 // MACRO CONSTANT TYPEDEF PROTYPES
@@ -76,6 +77,7 @@ uint8_t keybef = 0x00;
 void main_init()
 {
     stdio_init_all();
+    adc_init();
     board_init();
     tusb_init();
 
@@ -181,32 +183,44 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
     {
         case REPORT_ID_GAMEPAD:
         {
+            float xaxis, yaxis, dpi;
             hid_gamepad_report_t report = { .x = 0, .y = 0, .z = 0, .rz = 0, .rx = 0, .ry = 0, .hat = 0, .buttons = 0 };
 
             //! ボード上上ボタン
-            if(gpio_get(SW1))
+            if(!gpio_get(SW1))
             {
                 report.buttons = report.buttons | GAMEPAD_BUTTON_TL;
             }
             //! ボード上下ボタン
-            if(gpio_get(SW2))
+            if(!gpio_get(SW2))
             {
                 report.buttons = report.buttons | GAMEPAD_BUTTON_TR;
             }
             //! 左上三本ピン
-            if(gpio_get(SW3))
+            if(!gpio_get(SW3))
             {
                 report.buttons = report.buttons | GAMEPAD_BUTTON_A;
             }
             //! 左側4ピン
-            if(gpio_get(SW4))
+            if(!gpio_get(SW4))
             {
                 report.buttons = report.buttons | GAMEPAD_BUTTON_TL2;
             }
-            if(gpio_get(SW5))
+            if(!gpio_get(SW5))
             {
                 report.buttons = report.buttons | GAMEPAD_BUTTON_TR2;
             }
+
+            dpi = 1 / (float) 2;
+            adc_select_input(1);
+            xaxis = adc_read();
+            xaxis = dpi * rescale(xaxis, 4096 -1, 0, 256 - 1, - (256 - 1));
+            adc_select_input(0);
+            yaxis = adc_read();
+            yaxis = dpi * rescale(yaxis, 4096 -1, 0, 256 - 1, - (256 - 1));
+
+            report.x = xaxis;
+            report.y = yaxis;
 
             tud_hid_report(REPORT_ID_GAMEPAD, &report, sizeof(report));
         }
