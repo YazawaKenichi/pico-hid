@@ -24,6 +24,7 @@ add_compile_options(-Wall
 
 if(TARGET tinyusb_device)
     add_subdirectory(foot_key)
+    add_subdirectory(mine_auto)
     if(TARGET tinyusb_host)
         add_subdirectory(spla_hid)
     else()
