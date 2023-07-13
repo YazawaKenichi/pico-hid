@@ -70,6 +70,11 @@
 //! 右側のオルタネートスイッチ
 #define SW6 21
 
+//! レポート周期
+#define INTERVAL_MS 100
+//! 攻撃周期
+#define ATTACK_MS 10000
+
 #define RESC(X) rescale(X, 4096, 0, 50, 0)
 
 /* 点滅パターン
@@ -93,6 +98,7 @@ uint8_t flg;
 
 //! オルタネートスイッチで使う
 uint8_t alternated;
+uint8_t report_count = 0;
 uint8_t button_buff = 0x00;
 uint8_t keybef = 0x00;
 
@@ -258,15 +264,32 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
               yaxis *= -1;
             yaxis *= (float) dpi;
 
-            if(!alternated)
-            {
-                button = !gpio_get(SW3) ? 0x01 : 0x00;
-            }
-            else
+            if(alternated)
             {
                 button = button_buff ? 0x00 : 0x01;
                 button_buff = button;
                 button = button ? (!gpio_get(SW3) ? 0x01 : 0x00) : 0x00;
+            }
+            else
+            {
+                if(!gpio_get(SW3))
+                {
+                    if(report_count <= 0)
+                    {
+                        button = 0x01;
+                        report_count = (ATTACK_MS / 1000) * (1000 / INTERVAL_MS) - 1;
+                    }
+                    else
+                    {
+                        button = 0x00;
+                        report_count--;
+                    }
+                }
+                else
+                {
+                    button = 0x00;
+                    report_count = 0;
+                }
             }
 
             //! tud_hid_mouse_report(REPORT_ID_MOUSE, ボタン, 右移動量, 下移動量, スクロール量, パン量(パンって何))
@@ -285,8 +308,8 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
 // tud_hid_report_complete_cb() は、前のレポートが完了した後に次のレポートを送信するために使用される
 void hid_task(void)
 {
-  // 10 ms ごとにポーリングする
-  const uint32_t interval_ms = 10;
+  // 1 ms ごとにポーリングする
+  const uint32_t interval_ms = INTERVAL_MS;
   static uint32_t start_ms = 0;
 
   if ( board_millis() - start_ms < interval_ms) return; // 時間が足りない
