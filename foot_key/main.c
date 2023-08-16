@@ -243,7 +243,7 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
         case REPORT_ID_MOUSE:
         {
             float xaxis, yaxis;
-            uint8_t button;
+            uint8_t button, l_button, r_button;
 
             float dpi;
             bool reverse;
@@ -264,11 +264,13 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
               yaxis *= -1;
             yaxis *= (float) dpi;
 
+            r_button = !gpio_get(SW4) ? MOUSE_BUTTON_RIGHT : 0;
+
             if(alternated)
             {
-                button = button_buff ? 0x00 : 0x01;
-                button_buff = button;
-                button = button ? (!gpio_get(SW3) ? 0x01 : 0x00) : 0x00;
+                l_button = button_buff ? 0x00 : MOUSE_BUTTON_LEFT;
+                button_buff = l_button;
+                l_button = l_button ? (!gpio_get(SW3) ? MOUSE_BUTTON_LEFT : 0x00) : 0x00;
             }
             else
             {
@@ -276,21 +278,23 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
                 {
                     if(report_count <= 0)
                     {
-                        button = 0x01;
+                        l_button = MOUSE_BUTTON_LEFT;
                         report_count = (ATTACK_MS / 1000) * (1000 / INTERVAL_MS) - 1;
                     }
                     else
                     {
-                        button = 0x00;
+                        l_button = 0x00;
                         report_count--;
                     }
                 }
                 else
                 {
-                    button = 0x00;
+                    l_button = 0x00;
                     report_count = 0;
                 }
             }
+
+            button = l_button | r_button;
 
             //! tud_hid_mouse_report(REPORT_ID_MOUSE, ボタン, 右移動量, 下移動量, スクロール量, パン量(パンって何))
             xaxis = 0;
