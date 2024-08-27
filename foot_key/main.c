@@ -56,6 +56,9 @@
 // MACRO CONSTANT TYPEDEF PROTYPES
 //--------------------------------------------------------------------+
 
+#define ONFOOT 1    //! 赤ランプがついてるとき長押し
+#define LOWFREQ 1   //! 赤ランプがついてるとき周期押し
+
 #define LED1 0  //! 赤色 LED
 #define LED2 1  //! 緑色 LED
 
@@ -71,7 +74,7 @@
 #define SW6 21
 
 //! レポート周期
-#define INTERVAL_MS 100
+#define INTERVAL_MS 10
 //! 攻撃周期
 #define ATTACK_MS 10000
 
@@ -98,7 +101,7 @@ uint8_t flg;
 
 //! オルタネートスイッチで使う
 uint8_t alternated;
-uint8_t report_count = 0;
+uint16_t report_count = 0;
 uint8_t button_buff = 0x00;
 uint8_t keybef = 0x00;
 
@@ -268,12 +271,20 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
 
             if(alternated)
             {
+                //! 赤ランプがついてるときの動作
                 l_button = button_buff ? 0x00 : MOUSE_BUTTON_LEFT;
                 button_buff = l_button;
                 l_button = l_button ? (!gpio_get(SW3) ? MOUSE_BUTTON_LEFT : 0x00) : 0x00;
             }
             else
             {
+                //! 赤ランプが消えてるときの動作
+#if ONFOOT
+                //! 踏んでる間長押し
+                l_button = !gpio_get(SW3) ? 0x01 : 0x00;
+#endif
+#if LOWFREQ
+                //! ATTACK_MS ms 間隔で左クリックする
                 if(!gpio_get(SW3))
                 {
                     if(report_count <= 0)
@@ -292,6 +303,7 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
                     l_button = 0x00;
                     report_count = 0;
                 }
+#endif
             }
 
             button = l_button | r_button;
@@ -312,11 +324,16 @@ static void send_hid_report(uint8_t report_id, uint32_t btn)
 // tud_hid_report_complete_cb() は、前のレポートが完了した後に次のレポートを送信するために使用される
 void hid_task(void)
 {
-  // 1 ms ごとにポーリングする
-  const uint32_t interval_ms = INTERVAL_MS;
+    adc_select_input(2);
+    float interval_value = adc_read();
+    const uint32_t interval_ms = rescale(interval_value, 4096 - 1, 0, INTERVAL_MS * 10, INTERVAL_MS);
   static uint32_t start_ms = 0;
 
-  if ( board_millis() - start_ms < interval_ms) return; // 時間が足りない
+  if ( board_millis() - start_ms < interval_ms)
+  {
+        gpio_put(LED2, 1);
+      return;
+  }
   start_ms += interval_ms;
 
   uint32_t const btn = board_button_read();
@@ -331,6 +348,7 @@ void hid_task(void)
   else
   {
     // レポートチェーンの最初のものを送信し、残りは tud_hid_report_complete_cb() によって送信される
+    gpio_put(LED2, 0);
     send_hid_report(REPORT_ID_KEYBOARD, btn);
   }
 }
