@@ -25,6 +25,8 @@ add_compile_options(-Wall
 if(TARGET tinyusb_device)
     add_subdirectory(foot_key)
     add_subdirectory(mine_hid)
+    add_subdirectory(poke_coin)
+    add_subdirectory(poke_pack)
     if(TARGET tinyusb_host)
         add_subdirectory(spla_hid)
     else()
