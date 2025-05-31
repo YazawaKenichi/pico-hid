@@ -22,19 +22,11 @@ add_compile_options(-Wall
     -Wno-maybe-uninitialized
     )
 
+add_subdirectory(board_test)
+
 if(TARGET tinyusb_device)
-    add_subdirectory(foot_key)
-    add_subdirectory(mine_hid)
-    add_subdirectory(poke_coin)
-    add_subdirectory(poke_pack)
-    if(TARGET tinyusb_host)
-        add_subdirectory(spla_hid)
-    else()
-        message("Skipping TinyUSB host examples as TinyUSB is unavailable")
-    endif()
+    # add_subdirectory(foot_key)
 else()
     message("Skipping TinyUSB device examples as TinyUSB is unavailable")
 endif()
-
-
 
